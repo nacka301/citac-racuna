@@ -1,36 +1,80 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Čitač računa — demo
 
-## Getting Started
+Demo web alat: učitaš sliku ili PDF ulaznog računa, a Claude izvuče podatke u urednu tablicu
+(dobavljač, OIB, broj računa, datumi, osnovica, PDV, ukupno, IBAN, poziv na broj, stavke).
+Original se vidi uz rezultat, pa se točnost provjerava na oko. Što se ne može pročitati ostaje prazno.
 
-First, run the development server:
+**Samo demo** — nema prijave, baze, plaćanja, eRačuna ni batch obrade. Pogledaj [PRD.md](PRD.md).
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Pokretanje lokalno
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+1. Instaliraj ovisnosti:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+   ```bash
+   npm install
+   ```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+2. U korijenu projekta napravi file `.env.local` s jednom linijom (ključ s <https://console.anthropic.com/>):
 
-## Learn More
+   ```
+   ANTHROPIC_API_KEY=sk-ant-...
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+   Primjer je u `.env.example`. `.env.local` je u `.gitignore` i ne smije se commitati.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+3. Pokreni:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+   ```bash
+   npm run dev
+   ```
 
-## Deploy on Vercel
+   Otvori <http://localhost:3000>.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deploy na Vercel
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Postavi projekt na GitHub (`.env.local` se ne šalje) i na <https://vercel.com/new> uvezi repozitorij.
+   Framework se prepozna sam (Next.js), ništa ne mijenjaj.
+2. **Prije prvog deploya** (ili nakon njega, pa Redeploy): *Project → Settings → Environment Variables* →
+   dodaj `ANTHROPIC_API_KEY` s ključem, za okoline Production i Preview. Ne označavaj ništa kao javno
+   i ne dodavaj `NEXT_PUBLIC_` prefiks.
+3. Deploy. Nakon svake promjene env varijable treba **Redeploy** da bi se primijenila.
+
+Alternativa s CLI-jem: `npx vercel`, pa `npx vercel env add ANTHROPIC_API_KEY`, pa `npx vercel --prod`.
+
+### Prije nego link podijeliš
+
+Demo nema prijavu: tko god ima link, može slati račune, a svaki poziv troši tvoje API kredite.
+Za video i prikaz jednom knjigovođi preporučujem:
+
+- uključi *Deployment Protection* na Vercelu (Settings → Deployment Protection) ili link dijeli samo uživo,
+- postavi mjesečni limit potrošnje u Anthropic konzoli,
+- ključ nakon demoa ukloni ili rotiraj.
+
+## Kako radi
+
+- `app/page.tsx` + `components/` — jedna stranica (klijent): upload, pregled originala, tablice, CSV, kopiranje.
+- `app/api/extract/route.ts` — prima jedan file (do 4 MB), provjerava tip iz sadržaja, poziva model.
+- `lib/extract.ts` — poziv Anthropic API-ja (samo server, `import "server-only"`). PDF ide kao
+  `document` blok, slika kao `image` blok — bez vanjskog OCR-a. Izlaz je strogi JSON kroz alat
+  `extract_invoice` (`strict: true`).
+- `lib/invoice.ts` — shema polja i upute modelu; sva polja su nullable, nečitljivo = `null`.
+- `lib/validate.ts` — provjere nad rezultatom (OIB, IBAN, osnovica + PDV = ukupno, ...).
+  Model se ne ispravlja; korisnik dobije žuto upozorenje i sam provjerava račun.
+
+## Ograničenja i napomene
+
+- **4 MB po fileu** — Vercel funkcije primaju tijelo zahtjeva do ~4,5 MB. Veći PDF treba smanjiti.
+- Podržano: JPEG, PNG, WebP, GIF i PDF. HEIC (iPhone) nije podržan; fotografiraj kao JPEG ili napravi screenshot.
+- Obrada nije trenutna (model razmišlja prije odgovora); funkcija ima limit od 60 s (`maxDuration` u `route.ts`).
+- Model je postavljen u `lib/extract.ts` (`MODEL`). Taj model ne prima prisilni `tool_choice`,
+  pa se alat vodi s `tool_choice: auto` + `strict` + uputom u promptu; ako alat nije pozvan, zahtjev se
+  jednom ponovi.
+- Ništa se ne sprema: file se obradi u memoriji i odbaci, pregled je lokalni blob u pregledniku.
+- Iznosi i datumi su prikazani u hrvatskom formatu; CSV je odvojen točkom-zarezom s UTF-8 BOM-om
+  (otvara se ispravno u Excelu s hrvatskim postavkama), a „Kopiraj” daje tekst odvojen tabulatorima.
+
+## Sigurnost ključa
+
+`ANTHROPIC_API_KEY` se čita samo u `lib/extract.ts` (`process.env`), koji je označen `server-only`.
+Klijentske komponente iz `lib/` uvoze samo tipove. Nema `NEXT_PUBLIC_` varijabli. Production build je
+provjeren da u klijentskom bundleu nema ključa ni SDK-a.
