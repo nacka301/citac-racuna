@@ -1,3 +1,4 @@
+import { FIELDS } from "./format";
 import type { Invoice } from "./invoice";
 
 // Provjere se izvode na serveru nad onim što je model vratio. Model ništa ne "ispravlja":
@@ -35,6 +36,13 @@ const close = (a: number, b: number, tol = 0.02) => Math.abs(a - b) <= tol;
 
 export function validateInvoice(inv: Invoice): Warning[] {
   const w: Warning[] = [];
+
+  // OIB i IBAN imaju kontrolni zbroj niže, pa za njih oznaka modela ne treba.
+  for (const key of inv.nesigurna_polja) {
+    if (inv[key] === null || key === "dobavljac_oib" || key === "kupac_oib" || key === "iban") continue;
+    const label = FIELDS.find((f) => f.key === key)?.label ?? key;
+    w.push({ polje: key, poruka: `${label}: neki znak nije siguran — provjeri na računu.` });
+  }
 
   if (inv.dobavljac_oib !== null && !validOib(inv.dobavljac_oib)) {
     w.push({ polje: "dobavljac_oib", poruka: "OIB dobavljača nije valjan (kontrolna znamenka se ne slaže) — provjeri na računu." });

@@ -1,7 +1,7 @@
 import type { Invoice, InvoiceItem, VatLine } from "./invoice";
 
 export type FieldKind = "text" | "date" | "money" | "percent";
-export type FieldKey = Exclude<keyof Invoice, "stavke" | "pdv_rekapitulacija">;
+export type FieldKey = Exclude<keyof Invoice, "stavke" | "pdv_rekapitulacija" | "nesigurna_polja">;
 
 export const FIELDS: { key: FieldKey; label: string; kind: FieldKind }[] = [
   { key: "dobavljac_naziv", label: "Dobavljač", kind: "text" },
@@ -9,6 +9,7 @@ export const FIELDS: { key: FieldKey; label: string; kind: FieldKind }[] = [
   { key: "kupac_naziv", label: "Kupac", kind: "text" },
   { key: "kupac_oib", label: "OIB kupca", kind: "text" },
   { key: "broj_racuna", label: "Broj računa", kind: "text" },
+  { key: "ibr", label: "IBR", kind: "text" },
   { key: "datum_izdavanja", label: "Datum izdavanja", kind: "date" },
   { key: "datum_dospijeca", label: "Datum dospijeća", kind: "date" },
   { key: "nacin_placanja", label: "Način plaćanja", kind: "text" },

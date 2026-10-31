@@ -1,5 +1,17 @@
 import type Anthropic from "@anthropic-ai/sdk";
 
+export const IDENTIFIERS = [
+  "dobavljac_oib",
+  "kupac_oib",
+  "broj_racuna",
+  "ibr",
+  "iban",
+  "poziv_na_broj",
+  "jir",
+  "zki",
+] as const;
+export type Identifier = (typeof IDENTIFIERS)[number];
+
 export type InvoiceItem = {
   opis: string | null;
   kolicina: number | null;
@@ -20,6 +32,7 @@ export type Invoice = {
   kupac_naziv: string | null;
   kupac_oib: string | null;
   broj_racuna: string | null;
+  ibr: string | null;
   datum_izdavanja: string | null; // YYYY-MM-DD
   datum_dospijeca: string | null; // YYYY-MM-DD
   nacin_placanja: string | null;
@@ -33,6 +46,7 @@ export type Invoice = {
   poziv_na_broj: string | null;
   jir: string | null;
   zki: string | null;
+  nesigurna_polja: Identifier[];
   pdv_rekapitulacija: VatLine[];
   stavke: InvoiceItem[];
 };
@@ -64,6 +78,7 @@ export const extractInvoiceTool: Anthropic.Tool = {
       "kupac_naziv",
       "kupac_oib",
       "broj_racuna",
+      "ibr",
       "datum_izdavanja",
       "datum_dospijeca",
       "nacin_placanja",
@@ -77,6 +92,7 @@ export const extractInvoiceTool: Anthropic.Tool = {
       "poziv_na_broj",
       "jir",
       "zki",
+      "nesigurna_polja",
       "pdv_rekapitulacija",
       "stavke",
     ],
@@ -89,6 +105,7 @@ export const extractInvoiceTool: Anthropic.Tool = {
         "Broj računa točno kako je ispisan, sa svim kosim crtama, crticama i nulama. " +
           "Oznake: Br.rač., Broj računa, Račun br., R-1 br. Oblik je često broj/poslovni prostor/naplatni uređaj.",
       ),
+      ibr: str("Vrijednost uz oznaku IBR na fiskalnom računu, točno kako je ispisana, npr. 0150/771184/03."),
       datum_izdavanja: str("Datum izdavanja u formatu YYYY-MM-DD."),
       datum_dospijeca: str("Datum dospijeća/valuta plaćanja u formatu YYYY-MM-DD."),
       nacin_placanja: str("Način plaćanja kako je ispisan, npr. Kartica, Gotovina, Transakcijski račun."),
@@ -104,6 +121,11 @@ export const extractInvoiceTool: Anthropic.Tool = {
       poziv_na_broj: str("Poziv na broj (model i broj) točno kako je ispisan, npr. HR00 123-456."),
       jir: str("JIR s fiskalnog računa, točno kako je ispisan (UUID s crticama)."),
       zki: str("ZKI s fiskalnog računa, točno kako je ispisan (32 heksadecimalna znaka)."),
+      nesigurna_polja: {
+        type: "array",
+        description: "Identifikatori upisani uz barem jedan nesiguran znak. Prazan niz ako su svi sigurni.",
+        items: { type: "string", enum: [...IDENTIFIERS] },
+      },
       pdv_rekapitulacija: {
         type: "array",
         description:
@@ -145,15 +167,17 @@ export const extractInvoiceTool: Anthropic.Tool = {
 export const SYSTEM_PROMPT = `Ti si precizan čitač hrvatskih ulaznih računa za knjigovođe. Iz priloženog računa (PDF, slika ili fotografija fiskalnog računa iz trgovine) izvlačiš podatke pozivom alata ${EXTRACT_TOOL_NAME}.
 
 Pravila (strogo):
-- Točnost je važnija od popunjenosti. Ako podatak nije ispisan, nije čitljiv ili nisi siguran u vrijednost, ostavi ga praznim: prazan string za tekst, null za broj. NIKAD ne izmišljaj, ne procjenjuj i ne računaj brojeve koji nisu ispisani na računu.
+- Točnost je važnija od popunjenosti. Ako iznos ili drugi podatak nije ispisan, nije čitljiv ili nisi siguran u vrijednost, ostavi ga praznim: prazan string za tekst, null za broj. Identifikatori imaju vlastito pravilo niže. NIKAD ne izmišljaj, ne procjenjuj i ne računaj brojeve koji nisu ispisani na računu.
 - Ne računaj osnovicu, PDV ili ukupno iz drugih iznosa; prepiši samo ono što stoji na računu.
 - Dobavljač je izdavatelj računa (prodavatelj), ne kupac. OIB dobavljača ne smije biti OIB kupca.
 - Brojeve pretvori u decimalnu točku bez separatora tisućica: "1.234,56" -> 1234.56. Negativni iznosi (npr. storno, popust) ostaju negativni.
 - Datume zapiši kao YYYY-MM-DD; "05.03.2026." -> "2026-03-05". Ako je datum nejasan, ostavi prazno.
-- Identifikatore (broj računa, OIB, IBAN, poziv na broj, JIR, ZKI) prepiši znak po znak; ako je i jedan znak nečitljiv, ostavi to polje prazno.
+- Identifikatore (broj računa, IBR, OIB, IBAN, poziv na broj, JIR, ZKI) uvijek pokušaj pročitati znak po znak, jer su knjigovođi najvažniji. Ako je neki znak nesiguran, upiši svoje najbolje čitanje i navedi to polje u nesigurna_polja. Prazno ostavi samo ako identifikatora nema na računu ili je zaklonjen ili odrezan.
 
 Fiskalni računi iz trgovine:
-- Broj računa stoji uz oznaku poput "Br.rač.". Nije to nijedan broj sa slipa kartice (BR.REF, BR.ODOBRENJA, BR.PROMETA, RRN, TID, MID, AID), ni oznaka "IBR", ni JIR, ni ZKI.
+- OIB dobavljača stoji u zaglavlju računa, odmah ispod naziva i adrese.
+- Broj računa stoji uz oznaku poput "Br.rač.". Nije to nijedan broj sa slipa kartice (BR.REF, BR.ODOBRENJA, BR.PROMETA, RRN, TID, MID, AID), ni JIR, ni ZKI.
+- Vrijednost uz oznaku "IBR" prepiši u polje ibr.
 - Tablicu PDV%/Osnovica/PDV/Ukupno prepiši u pdv_rekapitulacija. Red "Ukupno" te tablice daje osnovicu i PDV cijelog računa.
 - "za platiti" je ukupno. Povratna naknada ide u neoporezivo, ne u osnovicu.
 

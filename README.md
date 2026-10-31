@@ -57,7 +57,7 @@ Za video i prikaz jednom knjigovođi preporučujem:
 - `lib/extract.ts` — poziv Anthropic API-ja (samo server, `import "server-only"`). PDF ide kao
   `document` blok, slika kao `image` blok — bez vanjskog OCR-a. Izlaz je strogi JSON kroz alat
   `extract_invoice` (`strict: true`).
-- `lib/invoice.ts` — shema polja i upute modelu; nečitljivo ostaje prazno ("" za tekst, `null` za broj; server tekst pretvara u `null`).
+- `lib/invoice.ts` — shema polja i upute modelu; nečitljiv iznos ostaje prazan ("" za tekst, `null` za broj; server tekst pretvara u `null`). Identifikator se upisuje i kad je znak nesiguran, a model ga označi u `nesigurna_polja`.
 - `lib/prepare-file.ts` — klijent: isječci fotografija i smanjivanje velikih fileova (pdf.js) prije slanja.
 - `lib/validate.ts` — provjere nad rezultatom (OIB, IBAN, osnovica + PDV = ukupno, ...).
   Model se ne ispravlja; korisnik dobije žuto upozorenje i sam provjerava račun.
