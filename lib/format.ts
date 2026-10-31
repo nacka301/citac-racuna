@@ -67,6 +67,29 @@ export function fmtItemCell(key: keyof InvoiceItem, value: string | number | nul
   return money.format(value);
 }
 
+// ---- Ručni unos ----
+// Oba parsera: prazno -> null, neispravan unos -> undefined.
+
+export function parseNumber(text: string): number | null | undefined {
+  const t = text.replace(/[\s%€]/g, "").replace(/−/g, "-"); // hr-HR prikaz koristi znak − (U+2212)
+  if (t === "") return null;
+  let normalized: string;
+  if (t.includes(",")) normalized = t.replace(/\./g, "").replace(",", ".");
+  else if (/^-?[1-9]\d{0,2}(\.\d{3})+$/.test(t)) normalized = t.replace(/\./g, ""); // 1.234 = tisuće
+  else normalized = t;
+  return /^-?\d*\.?\d+$/.test(normalized) ? Number(normalized) : undefined;
+}
+
+export function parseDate(text: string): string | null | undefined {
+  const t = text.trim();
+  if (t === "") return null;
+  const m = /^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})\.?$/.exec(t);
+  if (!m) return undefined;
+  const iso = `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  const d = new Date(`${iso}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().startsWith(iso) ? iso : undefined;
+}
+
 // ---- CSV / kopiranje ----
 
 // Za izvoz: brojevi s decimalnim zarezom bez separatora tisućica (Excel s hrvatskim postavkama).

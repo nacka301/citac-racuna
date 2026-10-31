@@ -2,12 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Invoice } from "@/lib/invoice";
-import type { Warning } from "@/lib/validate";
 import { PrepareError, prepareFiles } from "@/lib/prepare-file";
 import Results from "./results";
 import { btnPrimary, btnSecondary } from "./ui";
 
-type Result = { data: Invoice; warnings: Warning[] };
+type Result = { data: Invoice };
 type State =
   | { status: "idle" }
   | { status: "loading" }
@@ -187,7 +186,7 @@ export default function InvoiceReader() {
             </div>
           </>
         )}
-        {state.status === "done" && <Results data={state.result.data} warnings={state.result.warnings} onReset={reset} />}
+        {state.status === "done" && <Results data={state.result.data} onReset={reset} />}
       </section>
     </div>
   );

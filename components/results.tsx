@@ -1,25 +1,79 @@
 "use client";
 
-import { useState } from "react";
-import type { Invoice } from "@/lib/invoice";
-import type { Warning } from "@/lib/validate";
-import { FIELDS, ITEM_COLUMNS, VAT_COLUMNS, csvFileName, fmtField, fmtItemCell, toCsv, toTsv } from "@/lib/format";
+import { useMemo, useState } from "react";
+import type { Invoice, InvoiceItem, VatLine } from "@/lib/invoice";
+import { validateInvoice } from "@/lib/validate";
+import {
+  FIELDS,
+  ITEM_COLUMNS,
+  VAT_COLUMNS,
+  csvFileName,
+  fmtField,
+  fmtItemCell,
+  parseDate,
+  parseNumber,
+  toCsv,
+  toTsv,
+  type FieldKey,
+  type FieldKind,
+} from "@/lib/format";
+import { EditableValue, Tick } from "./editable";
 import { btnPrimary, btnSecondary } from "./ui";
 
-export default function Results({
-  data,
-  warnings,
-  onReset,
-}: {
-  data: Invoice;
-  warnings: Warning[];
-  onReset: () => void;
-}) {
+type Value = string | number | null;
+
+const parseText = (text: string) => text.trim() || null;
+const parserFor = (kind: FieldKind) => (kind === "date" ? parseDate : kind === "text" ? parseText : parseNumber);
+const rowClass = (ok: boolean, warned: boolean) => (ok ? "bg-emerald-50" : warned ? "bg-amber-50" : undefined);
+
+export default function Results({ data: extracted, onReset }: { data: Invoice; onReset: () => void }) {
+  const [data, setData] = useState(extracted);
+  const [confirmed, setConfirmed] = useState<ReadonlySet<string>>(new Set());
   const [copied, setCopied] = useState<"ok" | "fail" | null>(null);
 
+  // Provjere se vrte nad ispravljenim podacima; potvrđeno više ne traži pažnju.
+  const allWarnings = useMemo(() => validateInvoice(data), [data]);
+  const warnings = allWarnings.filter((w) => !confirmed.has(w.polje));
+  const warned = new Set(warnings.map((w) => w.polje));
+
+  const rowKeys = [
+    ...FIELDS.map((f) => f.key as string),
+    ...data.pdv_rekapitulacija.map((_, i) => `pdv[${i + 1}]`),
+    ...data.stavke.map((_, i) => `stavke[${i + 1}]`),
+  ];
+  const done = rowKeys.filter((k) => confirmed.has(k)).length;
+  const remaining = rowKeys.filter((k) => !confirmed.has(k) && !warned.has(k));
+
+  const toggle = (key: string) =>
+    setConfirmed((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  const unconfirm = (...keys: string[]) =>
+    setConfirmed((prev) => {
+      const next = new Set(prev);
+      keys.forEach((k) => next.delete(k));
+      return next;
+    });
+
+  const setField = (key: FieldKey, value: Value) => {
+    setData((d) => ({ ...d, [key]: value }));
+    unconfirm(key);
+  };
+  const setVat = (index: number, key: keyof VatLine, value: Value) => {
+    setData((d) => ({
+      ...d,
+      pdv_rekapitulacija: d.pdv_rekapitulacija.map((r, i) => (i === index ? { ...r, [key]: value } : r)),
+    }));
+    unconfirm(`pdv[${index + 1}]`);
+  };
+  const setItem = (index: number, key: keyof InvoiceItem, value: Value) => {
+    setData((d) => ({ ...d, stavke: d.stavke.map((s, i) => (i === index ? { ...s, [key]: value } : s)) }));
+    unconfirm(`stavke[${index + 1}]`, "stavke");
+  };
+
   const missing = FIELDS.filter((f) => data[f.key] === null).length;
-  const byField = new Map<string, string[]>();
-  for (const w of warnings) byField.set(w.polje, [...(byField.get(w.polje) ?? []), w.poruka]);
 
   const download = () => {
     const blob = new Blob([toCsv(data)], { type: "text/csv;charset=utf-8" });
@@ -59,15 +113,18 @@ export default function Results({
         {missing === 0
           ? "Sva polja su popunjena."
           : `${missing} od ${FIELDS.length} polja je prazno (—): nema ih na računu ili nisu čitljiva.`}{" "}
-        Usporedi vrijednosti s originalom.
+        Klikni vrijednost da je ispraviš, a kvačicom potvrdi da je točna.
       </p>
 
       {warnings.length > 0 && (
-        <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div role="status" className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <p className="font-medium">Provjeri ručno ({warnings.length})</p>
-          <ul className="mt-1 list-disc space-y-0.5 pl-5">
-            {warnings.map((w, i) => (
-              <li key={i}>{w.poruka}</li>
+          <ul className="mt-2 space-y-2">
+            {warnings.map((w) => (
+              <li key={`${w.polje}:${w.poruka}`} className="flex items-start justify-between gap-3">
+                <span>{w.poruka}</span>
+                <Tick checked={false} label={`Potvrdi: ${w.poruka}`} onClick={() => toggle(w.polje)} />
+              </li>
             ))}
           </ul>
         </div>
@@ -76,25 +133,32 @@ export default function Results({
       <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
         <table className="w-full table-fixed text-sm">
           <caption className="sr-only">Izvučena polja</caption>
+          <colgroup>
+            <col style={{ width: "38%" }} />
+            <col />
+            <col style={{ width: "3rem" }} />
+          </colgroup>
           <tbody className="divide-y divide-zinc-100">
-            {FIELDS.map((f) => {
-              const text = fmtField(data[f.key], f.kind);
-              const warn = byField.get(f.key);
-              return (
-                <tr key={f.key} className={warn ? "bg-amber-50" : undefined}>
-                  <th scope="row" className="w-2/5 px-4 py-2.5 text-left align-top font-normal text-zinc-500">
-                    {f.label}
-                  </th>
-                  <td
-                    className={`px-4 py-2.5 align-top [overflow-wrap:anywhere] ${
-                      f.kind === "money" || f.kind === "percent" ? "font-mono tabular-nums" : ""
-                    }`}
-                  >
-                    <Value text={text} />
-                  </td>
-                </tr>
-              );
-            })}
+            {FIELDS.map((f) => (
+              <tr key={f.key} className={rowClass(confirmed.has(f.key), warned.has(f.key))}>
+                <th scope="row" className="py-2 pr-1 pl-4 text-left align-top font-normal text-zinc-500">
+                  {f.label}
+                </th>
+                <td className="px-1 py-1 align-top">
+                  <EditableValue
+                    value={data[f.key]}
+                    label={f.label}
+                    numeric={f.kind === "money" || f.kind === "percent"}
+                    format={(v) => fmtField(v, f.kind)}
+                    parse={parserFor(f.kind)}
+                    onCommit={(v) => setField(f.key, v)}
+                  />
+                </td>
+                <td className="py-1.5 pr-3 align-top">
+                  <Tick checked={confirmed.has(f.key)} label={`Potvrdi: ${f.label}`} onClick={() => toggle(f.key)} />
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -103,26 +167,45 @@ export default function Results({
         <div>
           <h2 className="mb-2 text-sm font-medium text-zinc-600">PDV po stopama</h2>
           <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
-            <table className="w-full text-xs sm:text-sm">
+            <table className="w-full table-fixed text-xs sm:text-sm">
+              <colgroup>
+                {VAT_COLUMNS.map((c) => (
+                  <col key={c.key} />
+                ))}
+                <col style={{ width: "2.5rem" }} />
+              </colgroup>
               <thead className="bg-zinc-50 text-right text-xs text-zinc-500">
                 <tr>
                   {VAT_COLUMNS.map((c) => (
-                    <th key={c.key} className="px-2 py-2 font-medium sm:px-3">
+                    <th key={c.key} className="px-2 py-2 font-medium">
                       {c.label}
                     </th>
                   ))}
+                  <th>
+                    <span className="sr-only">Potvrda</span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
                 {data.pdv_rekapitulacija.map((r, i) => {
-                  const warn = byField.get(`pdv[${i + 1}]`);
+                  const key = `pdv[${i + 1}]`;
                   return (
-                    <tr key={i} className={warn ? "bg-amber-50" : undefined} title={warn?.join(" ")}>
+                    <tr key={key} className={rowClass(confirmed.has(key), warned.has(key))}>
                       {VAT_COLUMNS.map((c) => (
-                        <td key={c.key} className="px-2 py-2 text-right font-mono tabular-nums sm:px-3">
-                          <Value text={fmtField(r[c.key], c.kind)} />
+                        <td key={c.key} className="px-0.5 py-1 align-top">
+                          <EditableValue
+                            numeric
+                            value={r[c.key]}
+                            label={`PDV red ${i + 1}: ${c.label}`}
+                            format={(v) => fmtField(v, c.kind)}
+                            parse={parseNumber}
+                            onCommit={(v) => setVat(i, c.key, v)}
+                          />
                         </td>
                       ))}
+                      <td className="py-1 pr-2 align-top">
+                        <Tick checked={confirmed.has(key)} label={`Potvrdi PDV red ${i + 1}`} onClick={() => toggle(key)} />
+                      </td>
                     </tr>
                   );
                 })}
@@ -140,31 +223,52 @@ export default function Results({
           </p>
         ) : (
           <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
-            <table className="w-full text-xs sm:text-sm">
-              <thead className="bg-zinc-50 text-left text-xs text-zinc-500">
+            <table className="w-full table-fixed text-xs sm:text-sm">
+              <colgroup>
+                <col className="hidden w-9 sm:table-column" />
+                <col />
+                <col className="w-14 sm:w-20" />
+                <col className="w-[4.25rem] sm:w-24" />
+                <col className="w-[4.25rem] sm:w-24" />
+                <col style={{ width: "2.5rem" }} />
+              </colgroup>
+              <thead className="bg-zinc-50 text-left text-[11px] text-zinc-500 sm:text-xs">
                 <tr>
                   <th className="hidden px-3 py-2 font-medium sm:table-cell">#</th>
                   {ITEM_COLUMNS.map((c) => (
-                    <th key={c.key} className={`px-2 py-2 font-medium sm:px-3 ${c.numeric ? "text-right" : ""}`}>
+                    <th
+                      key={c.key}
+                      className={`px-1.5 py-2 font-medium ${c.numeric ? "text-right" : ""}`}
+                    >
                       {c.label}
                     </th>
                   ))}
+                  <th>
+                    <span className="sr-only">Potvrda</span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
                 {data.stavke.map((s, i) => {
-                  const warn = byField.get(`stavke[${i + 1}]`);
+                  const key = `stavke[${i + 1}]`;
                   return (
-                    <tr key={i} className={warn ? "bg-amber-50" : undefined} title={warn?.join(" ")}>
+                    <tr key={key} className={rowClass(confirmed.has(key), warned.has(key))}>
                       <td className="hidden px-3 py-2 align-top text-zinc-400 sm:table-cell">{i + 1}</td>
                       {ITEM_COLUMNS.map((c) => (
-                        <td
-                          key={c.key}
-                          className={`px-2 py-2 align-top sm:px-3 ${c.numeric ? "text-right font-mono tabular-nums" : "break-words"}`}
-                        >
-                          <Value text={fmtItemCell(c.key, s[c.key])} />
+                        <td key={c.key} className="px-0.5 py-1 align-top">
+                          <EditableValue
+                            value={s[c.key]}
+                            label={`Stavka ${i + 1}: ${c.label}`}
+                            numeric={c.numeric}
+                            format={(v) => fmtItemCell(c.key, v)}
+                            parse={c.numeric ? parseNumber : parseText}
+                            onCommit={(v) => setItem(i, c.key, v)}
+                          />
                         </td>
                       ))}
+                      <td className="py-1 pr-2 align-top">
+                        <Tick checked={confirmed.has(key)} label={`Potvrdi stavku ${i + 1}`} onClick={() => toggle(key)} />
+                      </td>
                     </tr>
                   );
                 })}
@@ -173,16 +277,26 @@ export default function Results({
           </div>
         )}
       </div>
-    </div>
-  );
-}
 
-function Value({ text }: { text: string | null }) {
-  return text === null ? (
-    <span className="text-zinc-300" title="Nije pročitano" aria-label="nije pročitano">
-      —
-    </span>
-  ) : (
-    <>{text}</>
+      <div
+        className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
+          done === rowKeys.length ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-zinc-200 bg-white text-zinc-700"
+        }`}
+      >
+        <p className="font-medium">
+          {done === rowKeys.length ? "✓ Sve je potvrđeno" : `Potvrđeno ${done} od ${rowKeys.length}`}
+        </p>
+        {remaining.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setConfirmed((prev) => new Set([...prev, ...remaining]))}
+            className={btnSecondary}
+            title="Potvrđuje sve redove bez upozorenja; redove s upozorenjem potvrdi sam"
+          >
+            Potvrdi ostalo
+          </button>
+        )}
+      </div>
+    </div>
   );
 }

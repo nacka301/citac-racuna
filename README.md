@@ -59,6 +59,8 @@ Za video i prikaz jednom knjigovođi preporučujem:
   `extract_invoice` (`strict: true`).
 - `lib/invoice.ts` — shema polja i upute modelu; nečitljiv iznos ostaje prazan ("" za tekst, `null` za broj; server tekst pretvara u `null`). Identifikator se upisuje i kad je znak nesiguran, a model ga označi u `nesigurna_polja`.
 - `lib/prepare-file.ts` — klijent: isječci fotografija i smanjivanje velikih fileova (pdf.js) prije slanja.
+- `components/results.tsx` + `components/editable.tsx` — ručni ispravak svake vrijednosti i kvačica za potvrdu.
+  Provjere se ponavljaju nad ispravljenim podacima, a CSV i kopiranje uzimaju ispravljene vrijednosti.
 - `lib/validate.ts` — provjere nad rezultatom (OIB, IBAN, osnovica + PDV = ukupno, ...).
   Model se ne ispravlja; korisnik dobije žuto upozorenje i sam provjerava račun.
 
