@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { ExtractError, MAX_FILE_BYTES, detectFile, extractInvoice } from "@/lib/extract";
+import { ExtractError, MAX_FILE_BYTES, MAX_PAGES, detectFile, extractInvoice } from "@/lib/extract";
 import { validateInvoice } from "@/lib/validate";
 
 export const maxDuration = 60;
@@ -11,22 +11,34 @@ export async function POST(request: Request) {
   try {
     form = await request.formData();
   } catch {
-    return fail("Neispravan zahtjev. Pošalji jedan file u polju „file“.", 400);
+    return fail("Neispravan zahtjev. Pošalji račun u polju „file“.", 400);
   }
 
-  const file = form.get("file");
-  if (!(file instanceof File)) return fail("Nije priložen file.", 400);
-  if (file.size === 0) return fail("File je prazan.", 400);
-  if (file.size > MAX_FILE_BYTES) {
-    return fail(`File je prevelik (${(file.size / 1024 / 1024).toFixed(1)} MB). Najviše je 4 MB.`, 413);
+  const entries = form.getAll("file");
+  if (entries.length === 0 || !entries.every((e): e is File => e instanceof File)) {
+    return fail("Nije priložen file.", 400);
+  }
+  if (entries.length > MAX_PAGES) return fail(`Najviše ${MAX_PAGES} stranica po računu.`, 400);
+
+  const total = entries.reduce((n, f) => n + f.size, 0);
+  if (total === 0) return fail("File je prazan.", 400);
+  if (total > MAX_FILE_BYTES) {
+    return fail(`File je prevelik (${(total / 1024 / 1024).toFixed(1)} MB). Najviše je 4 MB.`, 413);
   }
 
-  const buf = Buffer.from(await file.arrayBuffer());
-  const detected = detectFile(buf);
-  if (!detected) return fail("Nepodržan format. Dopuštene su slike (JPEG, PNG, WebP, GIF) i PDF.", 415);
+  const files = [];
+  for (const f of entries) {
+    const buf = Buffer.from(await f.arrayBuffer());
+    const detected = detectFile(buf);
+    if (!detected) return fail("Nepodržan format. Dopuštene su slike (JPEG, PNG, WebP, GIF) i PDF.", 415);
+    files.push({ buf, detected });
+  }
+  if (files.length > 1 && files.some((f) => f.detected.kind === "pdf")) {
+    return fail("Pošalji ili jedan PDF ili slike stranica, ne oboje.", 400);
+  }
 
   try {
-    const data = await extractInvoice(buf, detected);
+    const data = await extractInvoice(files);
     return Response.json({ data, warnings: validateInvoice(data) });
   } catch (err) {
     if (err instanceof ExtractError) return fail(err.message, err.status);

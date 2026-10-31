@@ -6,7 +6,7 @@ import { EXTRACT_TOOL_NAME, SYSTEM_PROMPT, extractInvoiceTool, type Invoice } fr
 // (any/tool vraćaju 400), pa alat vodimo kroz tool_choice "auto" + strict + uputu u promptu.
 export const MODEL = "claude-opus-5-5";
 
-export { MAX_FILE_BYTES } from "./limits";
+export { MAX_FILE_BYTES, MAX_PAGES } from "./limits";
 
 type ImageType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 export type Detected = { kind: "pdf" } | { kind: "image"; mediaType: ImageType };
@@ -41,13 +41,15 @@ function fileBlock(buf: Buffer, detected: Detected): Anthropic.ContentBlockParam
     : { type: "image", source: { type: "base64", media_type: detected.mediaType, data } };
 }
 
-export async function extractInvoice(buf: Buffer, detected: Detected): Promise<Invoice> {
+// Jedan račun = jedan PDF ili jedna do MAX_PAGES slika (stranice istog računa).
+export async function extractInvoice(files: { buf: Buffer; detected: Detected }[]): Promise<Invoice> {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new ExtractError("Na serveru nije postavljen ANTHROPIC_API_KEY.", 500);
   }
   const client = new Anthropic(); // čita ANTHROPIC_API_KEY iz okoline (samo server)
 
   const instruction =
+    (files.length > 1 ? `Ove ${files.length} slike su stranice istog računa, redom. ` : "") +
     `Izvuci podatke s ovog računa pozivom alata ${EXTRACT_TOOL_NAME}. ` +
     "Što nije jasno čitljivo, vrati null — ne pogađaj.";
 
@@ -63,7 +65,7 @@ export async function extractInvoice(buf: Buffer, detected: Detected): Promise<I
       messages: [
         {
           role: "user",
-          content: [fileBlock(buf, detected), { type: "text", text: instruction }],
+          content: [...files.map((f) => fileBlock(f.buf, f.detected)), { type: "text", text: instruction }],
         },
       ],
     });

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Invoice } from "@/lib/invoice";
 import type { Warning } from "@/lib/validate";
-import { MAX_FILE_BYTES } from "@/lib/limits";
+import { PrepareError, prepareFiles } from "@/lib/prepare-file";
 import Results from "./results";
 import { btnPrimary, btnSecondary } from "./ui";
 
@@ -47,14 +47,6 @@ export default function InvoiceReader() {
   const process = useCallback(async (f: File) => {
     abortRef.current?.abort();
 
-    if (f.size > MAX_FILE_BYTES) {
-      showPreview(null);
-      setState({
-        status: "error",
-        message: `File je prevelik (${(f.size / 1024 / 1024).toFixed(1)} MB). Najviše je ${MAX_FILE_BYTES / 1024 / 1024} MB.`,
-      });
-      return;
-    }
     if (!f.type.startsWith("image/") && f.type !== "application/pdf") {
       showPreview(null);
       setState({ status: "error", message: "Nepodržan format. Dopuštene su slike i PDF." });
@@ -67,8 +59,12 @@ export default function InvoiceReader() {
     setState({ status: "loading" });
 
     try {
+      // Velike slike i PDF-ovi se smanje u pregledniku da stanu u limit zahtjeva.
+      const parts = await prepareFiles(f);
+      if (ctrl.signal.aborted) return;
+
       const body = new FormData();
-      body.append("file", f);
+      for (const p of parts) body.append("file", p);
       const res = await fetch("/api/extract", { method: "POST", body, signal: ctrl.signal });
 
       let json: unknown = null;
@@ -91,6 +87,10 @@ export default function InvoiceReader() {
       setState({ status: "done", result: json as Result });
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
+      if (err instanceof PrepareError) {
+        setState({ status: "error", message: err.message });
+        return;
+      }
       setState({ status: "error", message: "Nema veze s poslužiteljem. Provjeri internet i pokušaj ponovno." });
     }
   }, [showPreview]);
@@ -128,7 +128,7 @@ export default function InvoiceReader() {
           </svg>
           <div>
             <p className="text-lg font-medium">Povuci račun ovdje</p>
-            <p className="mt-1 text-sm text-zinc-500">slika ili PDF, jedan račun, do {MAX_FILE_BYTES / 1024 / 1024} MB</p>
+            <p className="mt-1 text-sm text-zinc-500">slika ili PDF, jedan račun</p>
           </div>
           <button
             type="button"
