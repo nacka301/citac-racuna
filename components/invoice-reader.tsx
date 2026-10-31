@@ -60,11 +60,12 @@ export default function InvoiceReader() {
 
     try {
       // Velike slike i PDF-ovi se smanje u pregledniku da stanu u limit zahtjeva.
-      const parts = await prepareFiles(f);
+      const { files, mode } = await prepareFiles(f);
       if (ctrl.signal.aborted) return;
 
       const body = new FormData();
-      for (const p of parts) body.append("file", p);
+      body.append("mode", mode);
+      for (const p of files) body.append("file", p);
       const res = await fetch("/api/extract", { method: "POST", body, signal: ctrl.signal });
 
       let json: unknown = null;
@@ -198,7 +199,7 @@ function Spinner() {
       <div className="h-9 w-9 animate-spin rounded-full border-4 border-zinc-200 border-t-zinc-900" />
       <div>
         <p className="font-medium">Čitam račun…</p>
-        <p className="mt-1 text-sm text-zinc-500">Obično traje do pola minute.</p>
+        <p className="mt-1 text-sm text-zinc-500">Obično traje do minute.</p>
       </div>
     </div>
   );

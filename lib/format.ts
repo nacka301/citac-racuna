@@ -1,21 +1,27 @@
-import type { Invoice, InvoiceItem } from "./invoice";
+import type { Invoice, InvoiceItem, VatLine } from "./invoice";
 
 export type FieldKind = "text" | "date" | "money" | "percent";
-export type FieldKey = Exclude<keyof Invoice, "stavke">;
+export type FieldKey = Exclude<keyof Invoice, "stavke" | "pdv_rekapitulacija">;
 
 export const FIELDS: { key: FieldKey; label: string; kind: FieldKind }[] = [
   { key: "dobavljac_naziv", label: "Dobavljač", kind: "text" },
   { key: "dobavljac_oib", label: "OIB dobavljača", kind: "text" },
+  { key: "kupac_naziv", label: "Kupac", kind: "text" },
+  { key: "kupac_oib", label: "OIB kupca", kind: "text" },
   { key: "broj_racuna", label: "Broj računa", kind: "text" },
   { key: "datum_izdavanja", label: "Datum izdavanja", kind: "date" },
   { key: "datum_dospijeca", label: "Datum dospijeća", kind: "date" },
+  { key: "nacin_placanja", label: "Način plaćanja", kind: "text" },
   { key: "osnovica", label: "Osnovica (bez PDV-a)", kind: "money" },
   { key: "pdv_stopa", label: "PDV stopa", kind: "percent" },
   { key: "pdv_iznos", label: "PDV iznos", kind: "money" },
+  { key: "neoporezivo", label: "Neoporezivo (npr. povratna naknada)", kind: "money" },
   { key: "ukupno", label: "Ukupno", kind: "money" },
   { key: "valuta", label: "Valuta", kind: "text" },
   { key: "iban", label: "IBAN", kind: "text" },
   { key: "poziv_na_broj", label: "Poziv na broj", kind: "text" },
+  { key: "jir", label: "JIR", kind: "text" },
+  { key: "zki", label: "ZKI", kind: "text" },
 ];
 
 export const ITEM_COLUMNS: { key: keyof InvoiceItem; label: string; numeric: boolean }[] = [
@@ -23,6 +29,13 @@ export const ITEM_COLUMNS: { key: keyof InvoiceItem; label: string; numeric: boo
   { key: "kolicina", label: "Količina", numeric: true },
   { key: "jed_cijena", label: "Jed. cijena", numeric: true },
   { key: "iznos", label: "Iznos", numeric: true },
+];
+
+export const VAT_COLUMNS: { key: keyof VatLine; label: string; kind: FieldKind }[] = [
+  { key: "stopa", label: "Stopa", kind: "percent" },
+  { key: "osnovica", label: "Osnovica", kind: "money" },
+  { key: "pdv", label: "PDV", kind: "money" },
+  { key: "ukupno", label: "Ukupno", kind: "money" },
 ];
 
 const nf = (min: number, max: number) =>
@@ -66,6 +79,12 @@ function plain(value: string | number | null, kind: FieldKind): string {
 function rows(inv: Invoice): string[][] {
   const out: string[][] = [["Polje", "Vrijednost"]];
   for (const f of FIELDS) out.push([f.label, plain(inv[f.key], f.kind)]);
+  if (inv.pdv_rekapitulacija.length > 0) {
+    out.push([]);
+    out.push(["PDV po stopama"]);
+    out.push(VAT_COLUMNS.map((c) => c.label));
+    for (const r of inv.pdv_rekapitulacija) out.push(VAT_COLUMNS.map((c) => plain(r[c.key], c.kind)));
+  }
   out.push([]);
   out.push(["Stavke"]);
   out.push(["#", ...ITEM_COLUMNS.map((c) => c.label)]);

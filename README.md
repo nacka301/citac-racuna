@@ -1,7 +1,7 @@
 # Čitač računa — demo
 
 Demo web alat: učitaš sliku ili PDF ulaznog računa, a Claude izvuče podatke u urednu tablicu
-(dobavljač, OIB, broj računa, datumi, osnovica, PDV, ukupno, IBAN, poziv na broj, stavke).
+(dobavljač, kupac, OIB, broj računa, datumi, način plaćanja, osnovica, PDV po stopama, ukupno, IBAN, poziv na broj, JIR, ZKI, stavke).
 Original se vidi uz rezultat, pa se točnost provjerava na oko. Što se ne može pročitati ostaje prazno.
 
 **Samo demo** — nema prijave, baze, plaćanja, eRačuna ni batch obrade. Pogledaj [PRD.md](PRD.md).
@@ -53,23 +53,26 @@ Za video i prikaz jednom knjigovođi preporučujem:
 ## Kako radi
 
 - `app/page.tsx` + `components/` — jedna stranica (klijent): upload, pregled originala, tablice, CSV, kopiranje.
-- `app/api/extract/route.ts` — prima jedan račun (PDF ili do 8 slika stranica, ukupno do 4 MB), provjerava tip iz sadržaja, poziva model.
+- `app/api/extract/route.ts` — prima jedan račun (PDF ili do 8 slika, ukupno do 4 MB), provjerava tip iz sadržaja, poziva model.
 - `lib/extract.ts` — poziv Anthropic API-ja (samo server, `import "server-only"`). PDF ide kao
   `document` blok, slika kao `image` blok — bez vanjskog OCR-a. Izlaz je strogi JSON kroz alat
   `extract_invoice` (`strict: true`).
-- `lib/invoice.ts` — shema polja i upute modelu; sva polja su nullable, nečitljivo = `null`.
-- `lib/prepare-file.ts` — klijent: smanjivanje velikih slika i PDF-ova (pdf.js) prije slanja.
+- `lib/invoice.ts` — shema polja i upute modelu; nečitljivo ostaje prazno ("" za tekst, `null` za broj; server tekst pretvara u `null`).
+- `lib/prepare-file.ts` — klijent: isječci fotografija i smanjivanje velikih fileova (pdf.js) prije slanja.
 - `lib/validate.ts` — provjere nad rezultatom (OIB, IBAN, osnovica + PDV = ukupno, ...).
   Model se ne ispravlja; korisnik dobije žuto upozorenje i sam provjerava račun.
 
 ## Ograničenja i napomene
 
-- **Veliki fileovi:** Vercel funkcije primaju tijelo zahtjeva do ~4,5 MB, pa se veće slike i PDF-ovi
-  smanje u pregledniku prije slanja (slika -> JPEG do 2000 px; veliki PDF -> JPEG po stranici, najviše 8 stranica).
-  PDF-ovi do 4 MB šalju se netaknuti, s tekstualnim slojem. Iz smanjenog PDF-a model čita samo ono što se vidi na slici.
+- **Rezolucija fotografija:** API smanjuje slike na 2576 px / 3,75 MP, pa bi sitan tekst na fotografiji računa
+  postao nečitljiv. Zato preglednik iz prevelike fotografije pronađe papir i šalje cijelu sliku plus isječke u punoj
+  rezoluciji. Jedna fotografija tako troši nekoliko slika.
+- **Veliki fileovi:** Vercel funkcije primaju tijelo zahtjeva do ~4,5 MB, pa se sve što šaljemo drži ispod 4 MB.
+  Veliki PDF postaje JPEG po stranici (najviše 8 stranica). PDF-ovi do 4 MB šalju se netaknuti, s tekstualnim slojem.
+  Iz smanjenog PDF-a model čita samo ono što se vidi na slici.
 - Podržano: JPEG, PNG, WebP, GIF i PDF. Ostale slike (npr. HEIC) preglednik pokuša pretvoriti u JPEG; Safari to
   obično uspije, ostali preglednici ne moraju.
-- Obrada nije trenutna (model razmišlja prije odgovora); funkcija ima limit od 60 s (`maxDuration` u `route.ts`).
+- Obrada nije trenutna (model razmišlja prije odgovora); funkcija ima limit od 120 s (`maxDuration` u `route.ts`).
 - Model je postavljen u `lib/extract.ts` (`MODEL`). Taj model ne prima prisilni `tool_choice`,
   pa se alat vodi s `tool_choice: auto` + `strict` + uputom u promptu; ako alat nije pozvan, zahtjev se
   jednom ponovi.

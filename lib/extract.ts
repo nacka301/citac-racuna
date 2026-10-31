@@ -1,6 +1,7 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
-import { EXTRACT_TOOL_NAME, SYSTEM_PROMPT, extractInvoiceTool, type Invoice } from "./invoice";
+import { EXTRACT_TOOL_NAME, SYSTEM_PROMPT, cleanInvoice, extractInvoiceTool, type Invoice } from "./invoice";
+import type { UploadMode } from "./limits";
 
 // Najnoviji Opus (vision + PDF). Napomena: ovaj model odbija prisilni tool_choice
 // (any/tool vraćaju 400), pa alat vodimo kroz tool_choice "auto" + strict + uputu u promptu.
@@ -41,17 +42,38 @@ function fileBlock(buf: Buffer, detected: Detected): Anthropic.ContentBlockParam
     : { type: "image", source: { type: "base64", media_type: detected.mediaType, data } };
 }
 
-// Jedan račun = jedan PDF ili jedna do MAX_PAGES slika (stranice istog računa).
-export async function extractInvoice(files: { buf: Buffer; detected: Detected }[]): Promise<Invoice> {
+// Slike se označavaju redom da se model na njih može pozvati (preporuka iz vision docs).
+function contentBlocks(files: { buf: Buffer; detected: Detected }[], mode: UploadMode): Anthropic.ContentBlockParam[] {
+  const task =
+    `Izvuci podatke s ovog računa pozivom alata ${EXTRACT_TOOL_NAME}. ` +
+    "Što nije jasno čitljivo, ostavi prazno — ne pogađaj.";
+  if (files.length === 1) {
+    return [fileBlock(files[0].buf, files[0].detected), { type: "text", text: task }];
+  }
+
+  const intro =
+    mode === "tiles"
+      ? "Slika 1 je cijela fotografija računa. Ostale slike su uvećani isječci iste fotografije, redom, i međusobno se " +
+        "preklapaju: to nisu nove stranice, pa svaku stavku upiši samo jednom. Sitni tekst čitaj iz isječaka."
+      : "Ove slike su stranice istog računa, redom.";
+  return [
+    ...files.flatMap((f, i): Anthropic.ContentBlockParam[] => [
+      { type: "text", text: `Slika ${i + 1}:` },
+      fileBlock(f.buf, f.detected),
+    ]),
+    { type: "text", text: `${intro} ${task}` },
+  ];
+}
+
+// Jedan račun = jedan PDF ili do MAX_PAGES slika (stranice ili isječci fotografije).
+export async function extractInvoice(
+  files: { buf: Buffer; detected: Detected }[],
+  mode: UploadMode,
+): Promise<Invoice> {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new ExtractError("Na serveru nije postavljen ANTHROPIC_API_KEY.", 500);
   }
   const client = new Anthropic(); // čita ANTHROPIC_API_KEY iz okoline (samo server)
-
-  const instruction =
-    (files.length > 1 ? `Ove ${files.length} slike su stranice istog računa, redom. ` : "") +
-    `Izvuci podatke s ovog računa pozivom alata ${EXTRACT_TOOL_NAME}. ` +
-    "Što nije jasno čitljivo, vrati null — ne pogađaj.";
 
   // tool_choice "auto" ne jamči poziv alata, pa provjeravamo i jednom ponovimo.
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -62,12 +84,7 @@ export async function extractInvoice(files: { buf: Buffer; detected: Detected }[
       output_config: { effort: "high" },
       tools: [extractInvoiceTool],
       tool_choice: { type: "auto" },
-      messages: [
-        {
-          role: "user",
-          content: [...files.map((f) => fileBlock(f.buf, f.detected)), { type: "text", text: instruction }],
-        },
-      ],
+      messages: [{ role: "user", content: contentBlocks(files, mode) }],
     });
 
     if (response.stop_reason === "refusal") {
@@ -80,7 +97,7 @@ export async function extractInvoice(files: { buf: Buffer; detected: Detected }[
     const call = response.content.find(
       (b): b is Anthropic.ToolUseBlock => b.type === "tool_use" && b.name === EXTRACT_TOOL_NAME,
     );
-    if (call) return call.input as Invoice;
+    if (call) return cleanInvoice(call.input);
   }
 
   throw new ExtractError("Model nije vratio strukturirane podatke. Pokušaj ponovno.", 502);

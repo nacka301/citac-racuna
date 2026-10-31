@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { ExtractError, MAX_FILE_BYTES, MAX_PAGES, detectFile, extractInvoice } from "@/lib/extract";
 import { validateInvoice } from "@/lib/validate";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const fail = (error: string, status: number) => Response.json({ error }, { status });
 
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const data = await extractInvoice(files);
+    const data = await extractInvoice(files, form.get("mode") === "tiles" ? "tiles" : "pages");
     return Response.json({ data, warnings: validateInvoice(data) });
   } catch (err) {
     if (err instanceof ExtractError) return fail(err.message, err.status);

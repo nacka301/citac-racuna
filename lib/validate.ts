@@ -37,14 +37,34 @@ export function validateInvoice(inv: Invoice): Warning[] {
   const w: Warning[] = [];
 
   if (inv.dobavljac_oib !== null && !validOib(inv.dobavljac_oib)) {
-    w.push({ polje: "dobavljac_oib", poruka: "OIB nije valjan (kontrolna znamenka se ne slaže) — provjeri na računu." });
+    w.push({ polje: "dobavljac_oib", poruka: "OIB dobavljača nije valjan (kontrolna znamenka se ne slaže) — provjeri na računu." });
+  }
+  if (inv.kupac_oib !== null && !validOib(inv.kupac_oib)) {
+    w.push({ polje: "kupac_oib", poruka: "OIB kupca nije valjan (kontrolna znamenka se ne slaže) — provjeri na računu." });
   }
   if (inv.iban !== null && !validIban(inv.iban)) {
     w.push({ polje: "iban", poruka: "IBAN nije valjan (kontrolni zbroj se ne slaže) — provjeri na računu." });
   }
+  if (inv.jir !== null && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(inv.jir)) {
+    w.push({ polje: "jir", poruka: "JIR nema ispravan oblik — provjeri na računu." });
+  }
+  if (inv.zki !== null && !/^[0-9a-f]{32}$/i.test(inv.zki)) {
+    w.push({ polje: "zki", poruka: "ZKI nema ispravan oblik — provjeri na računu." });
+  }
   if (inv.osnovica !== null && inv.pdv_iznos !== null && inv.ukupno !== null) {
-    if (!close(inv.osnovica + inv.pdv_iznos, inv.ukupno)) {
+    if (!close(inv.osnovica + inv.pdv_iznos + (inv.neoporezivo ?? 0), inv.ukupno)) {
       w.push({ polje: "ukupno", poruka: "Osnovica + PDV ne daje ukupno — provjeri iznose na računu." });
+    }
+  }
+  inv.pdv_rekapitulacija.forEach((r, i) => {
+    if (r.stopa !== null && r.osnovica !== null && r.pdv !== null && !close((r.osnovica * r.stopa) / 100, r.pdv, 0.05)) {
+      w.push({ polje: `pdv[${i + 1}]`, poruka: `PDV po stopi ${r.stopa} %: iznos ne odgovara osnovici — provjeri na računu.` });
+    }
+  });
+  if (inv.pdv_iznos !== null && inv.pdv_rekapitulacija.length > 0 && inv.pdv_rekapitulacija.every((r) => r.pdv !== null)) {
+    const sum = inv.pdv_rekapitulacija.reduce((n, r) => n + (r.pdv ?? 0), 0);
+    if (!close(sum, inv.pdv_iznos, 0.05)) {
+      w.push({ polje: "pdv_iznos", poruka: "Zbroj PDV-a po stopama ne daje ukupni PDV — provjeri na računu." });
     }
   }
   if (inv.osnovica !== null && inv.pdv_stopa !== null && inv.pdv_iznos !== null) {
@@ -60,6 +80,15 @@ export function validateInvoice(inv: Invoice): Warning[] {
       w.push({ polje: `stavke[${i + 1}]`, poruka: `Stavka ${i + 1}: količina × jed. cijena ne daje iznos (možda popust ili zaokruživanje).` });
     }
   });
+
+  // Stavke su na računu s PDV-om ili bez njega, pa zbroj smije pasti na bilo koji od ova tri iznosa.
+  if (inv.ukupno !== null && inv.stavke.length > 0 && inv.stavke.every((s) => s.iznos !== null)) {
+    const sum = inv.stavke.reduce((n, s) => n + (s.iznos ?? 0), 0);
+    const targets = [inv.ukupno, inv.ukupno - (inv.neoporezivo ?? 0), inv.osnovica];
+    if (!targets.some((t) => t !== null && close(sum, t, 0.05))) {
+      w.push({ polje: "stavke", poruka: "Zbroj stavki ne odgovara ukupnom iznosu — možda neka stavka nedostaje ili je upisana dvaput." });
+    }
+  }
 
   return w;
 }
