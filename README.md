@@ -1,10 +1,10 @@
-# Čitač računa — demo
+# Čitač računa
 
-Demo web alat: učitaš sliku ili PDF ulaznog računa, a Claude izvuče podatke u urednu tablicu
+Web alat: učitaš sliku ili PDF ulaznog računa, a Claude izvuče podatke u urednu tablicu
 (dobavljač, kupac, OIB, broj računa, datumi, način plaćanja, osnovica, PDV po stopama, ukupno, IBAN, poziv na broj, JIR, ZKI, stavke).
 Original se vidi uz rezultat, pa se točnost provjerava na oko. Što se ne može pročitati ostaje prazno.
 
-**Samo demo** — nema prijave, baze, plaćanja, eRačuna ni batch obrade. Pogledaj [PRD.md](PRD.md).
+Nema prijave, baze, plaćanja, eRačuna ni batch obrade. Pogledaj [PRD.md](PRD.md).
 
 ## Pokretanje lokalno
 
@@ -43,12 +43,12 @@ Alternativa s CLI-jem: `npx vercel`, pa `npx vercel env add ANTHROPIC_API_KEY`, 
 
 ### Prije nego link podijeliš
 
-Demo nema prijavu: tko god ima link, može slati račune, a svaki poziv troši tvoje API kredite.
+Alat nema prijavu: tko god ima link, može slati račune, a svaki poziv troši tvoje API kredite.
 Za video i prikaz jednom knjigovođi preporučujem:
 
 - uključi *Deployment Protection* na Vercelu (Settings → Deployment Protection) ili link dijeli samo uživo,
 - postavi mjesečni limit potrošnje u Anthropic konzoli,
-- ključ nakon demoa ukloni ili rotiraj.
+- ključ nakon prikaza ukloni ili rotiraj.
 
 ## Kako radi
 

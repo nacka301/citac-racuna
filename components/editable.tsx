@@ -5,8 +5,8 @@ import { useState } from "react";
 type Value = string | number | null;
 
 const base =
-  "block w-full min-w-0 rounded-md bg-transparent px-1.5 py-1 outline-none transition-colors placeholder:text-zinc-300 " +
-  "hover:bg-zinc-100 focus:bg-white focus:ring-2 focus:ring-blue-500";
+  "block w-full min-w-0 rounded-md bg-transparent px-1.5 py-1 outline-none transition-colors placeholder:text-stone-300 " +
+  "hover:bg-stone-100 focus:bg-white focus:ring-2 focus:ring-brand";
 
 // Izgleda kao običan tekst dok ga ne klikneš. Vrijednost se sprema pri izlasku iz polja ili na Enter.
 export function EditableValue({
@@ -70,10 +70,10 @@ export function Tick({ checked, label, onClick }: { checked: boolean; label: str
       aria-pressed={checked}
       aria-label={label}
       title={checked ? "Potvrđeno" : "Označi kao točno"}
-      className={`flex size-7 shrink-0 items-center justify-center rounded-full border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 ${
+      className={`flex size-7 shrink-0 items-center justify-center rounded-full border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand ${
         checked
           ? "border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700"
-          : "border-zinc-300 bg-white text-zinc-300 hover:border-emerald-500 hover:text-emerald-600"
+          : "border-stone-300 bg-white text-stone-300 hover:border-emerald-500 hover:text-emerald-600"
       }`}
     >
       <svg aria-hidden viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="3">

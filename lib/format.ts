@@ -3,26 +3,26 @@ import type { Invoice, InvoiceItem, VatLine } from "./invoice";
 export type FieldKind = "text" | "date" | "money" | "percent";
 export type FieldKey = Exclude<keyof Invoice, "stavke" | "pdv_rekapitulacija" | "nesigurna_polja">;
 
-export const FIELDS: { key: FieldKey; label: string; kind: FieldKind }[] = [
-  { key: "dobavljac_naziv", label: "Dobavljač", kind: "text" },
-  { key: "dobavljac_oib", label: "OIB dobavljača", kind: "text" },
-  { key: "kupac_naziv", label: "Kupac", kind: "text" },
-  { key: "kupac_oib", label: "OIB kupca", kind: "text" },
-  { key: "broj_racuna", label: "Broj računa", kind: "text" },
-  { key: "ibr", label: "IBR", kind: "text" },
-  { key: "datum_izdavanja", label: "Datum izdavanja", kind: "date" },
-  { key: "datum_dospijeca", label: "Datum dospijeća", kind: "date" },
-  { key: "nacin_placanja", label: "Način plaćanja", kind: "text" },
-  { key: "osnovica", label: "Osnovica (bez PDV-a)", kind: "money" },
-  { key: "pdv_stopa", label: "PDV stopa", kind: "percent" },
-  { key: "pdv_iznos", label: "PDV iznos", kind: "money" },
-  { key: "neoporezivo", label: "Neoporezivo (npr. povratna naknada)", kind: "money" },
-  { key: "ukupno", label: "Ukupno", kind: "money" },
-  { key: "valuta", label: "Valuta", kind: "text" },
-  { key: "iban", label: "IBAN", kind: "text" },
-  { key: "poziv_na_broj", label: "Poziv na broj", kind: "text" },
-  { key: "jir", label: "JIR", kind: "text" },
-  { key: "zki", label: "ZKI", kind: "text" },
+export const FIELDS: { key: FieldKey; label: string; kind: FieldKind; group: string }[] = [
+  { key: "dobavljac_naziv", label: "Dobavljač", kind: "text", group: "Stranke" },
+  { key: "dobavljac_oib", label: "OIB dobavljača", kind: "text", group: "Stranke" },
+  { key: "kupac_naziv", label: "Kupac", kind: "text", group: "Stranke" },
+  { key: "kupac_oib", label: "OIB kupca", kind: "text", group: "Stranke" },
+  { key: "broj_racuna", label: "Broj računa", kind: "text", group: "Račun" },
+  { key: "ibr", label: "IBR", kind: "text", group: "Račun" },
+  { key: "datum_izdavanja", label: "Datum izdavanja", kind: "date", group: "Račun" },
+  { key: "datum_dospijeca", label: "Datum dospijeća", kind: "date", group: "Račun" },
+  { key: "nacin_placanja", label: "Način plaćanja", kind: "text", group: "Račun" },
+  { key: "osnovica", label: "Osnovica (bez PDV-a)", kind: "money", group: "Iznosi" },
+  { key: "pdv_stopa", label: "PDV stopa", kind: "percent", group: "Iznosi" },
+  { key: "pdv_iznos", label: "PDV iznos", kind: "money", group: "Iznosi" },
+  { key: "neoporezivo", label: "Neoporezivo (npr. povratna naknada)", kind: "money", group: "Iznosi" },
+  { key: "ukupno", label: "Ukupno", kind: "money", group: "Iznosi" },
+  { key: "valuta", label: "Valuta", kind: "text", group: "Iznosi" },
+  { key: "iban", label: "IBAN", kind: "text", group: "Plaćanje" },
+  { key: "poziv_na_broj", label: "Poziv na broj", kind: "text", group: "Plaćanje" },
+  { key: "jir", label: "JIR", kind: "text", group: "Fiskalizacija" },
+  { key: "zki", label: "ZKI", kind: "text", group: "Fiskalizacija" },
 ];
 
 export const ITEM_COLUMNS: { key: keyof InvoiceItem; label: string; numeric: boolean }[] = [

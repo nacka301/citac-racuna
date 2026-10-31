@@ -8,6 +8,7 @@ import {
   ITEM_COLUMNS,
   VAT_COLUMNS,
   csvFileName,
+  fmtDate,
   fmtField,
   fmtItemCell,
   parseDate,
@@ -18,13 +19,16 @@ import {
   type FieldKind,
 } from "@/lib/format";
 import { EditableValue, Tick } from "./editable";
-import { btnPrimary, btnSecondary } from "./ui";
+import { btnPrimary, btnSecondary, card } from "./ui";
 
 type Value = string | number | null;
 
+const GROUPS = [...new Set(FIELDS.map((f) => f.group))];
+
 const parseText = (text: string) => text.trim() || null;
 const parserFor = (kind: FieldKind) => (kind === "date" ? parseDate : kind === "text" ? parseText : parseNumber);
-const rowClass = (ok: boolean, warned: boolean) => (ok ? "bg-emerald-50" : warned ? "bg-amber-50" : undefined);
+const rowClass = (ok: boolean, warned: boolean) =>
+  `transition-colors ${ok ? "bg-emerald-50" : warned ? "bg-amber-50" : ""}`;
 
 export default function Results({ data: extracted, onReset }: { data: Invoice; onReset: () => void }) {
   const [data, setData] = useState(extracted);
@@ -43,6 +47,7 @@ export default function Results({ data: extracted, onReset }: { data: Invoice; o
   ];
   const done = rowKeys.filter((k) => confirmed.has(k)).length;
   const remaining = rowKeys.filter((k) => !confirmed.has(k) && !warned.has(k));
+  const allDone = done === rowKeys.length;
 
   const toggle = (key: string) =>
     setConfirmed((prev) => {
@@ -73,8 +78,6 @@ export default function Results({ data: extracted, onReset }: { data: Invoice; o
     unconfirm(`stavke[${index + 1}]`, "stavke");
   };
 
-  const missing = FIELDS.filter((f) => data[f.key] === null).length;
-
   const download = () => {
     const blob = new Blob([toCsv(data)], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -95,8 +98,30 @@ export default function Results({ data: extracted, onReset }: { data: Invoice; o
     setTimeout(() => setCopied(null), 2500);
   };
 
+  const issued = [
+    data.broj_racuna && `Račun ${data.broj_racuna}`,
+    data.datum_izdavanja && fmtDate(data.datum_izdavanja),
+  ].filter(Boolean);
+
   return (
-    <div className="space-y-5">
+    <div className="animate-rise space-y-5 motion-reduce:animate-none">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 rounded-2xl bg-brand-deep px-5 py-5 text-white shadow-sm sm:px-6">
+        <div className="min-w-0">
+          <p className="text-sm text-emerald-100/75">Dobavljač</p>
+          <p className="font-serif text-xl leading-snug font-semibold [overflow-wrap:anywhere]">
+            {data.dobavljac_naziv ?? "—"}
+          </p>
+          {issued.length > 0 && <p className="mt-1 text-sm text-emerald-100/75">{issued.join(" · ")}</p>}
+        </div>
+        <div>
+          <p className="text-sm text-emerald-100/75">Ukupno</p>
+          <p className="text-3xl font-semibold tracking-tight tabular-nums">
+            {fmtField(data.ukupno, "money") ?? "—"}
+            {data.valuta && <span className="ml-1.5 text-base font-normal text-emerald-100/75">{data.valuta}</span>}
+          </p>
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={download} className={btnPrimary}>
           Preuzmi CSV
@@ -109,16 +134,11 @@ export default function Results({ data: extracted, onReset }: { data: Invoice; o
         </button>
       </div>
 
-      <p className="text-sm text-zinc-600">
-        {missing === 0
-          ? "Sva polja su popunjena."
-          : `${missing} od ${FIELDS.length} polja je prazno (—): nema ih na računu ili nisu čitljiva.`}{" "}
-        Klikni vrijednost da je ispraviš, a kvačicom potvrdi da je točna.
-      </p>
+      <p className="text-sm text-stone-600">Klikni vrijednost da je ispraviš, a kvačicom potvrdi da je točna.</p>
 
       {warnings.length > 0 && (
-        <div role="status" className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <p className="font-medium">Provjeri ručno ({warnings.length})</p>
+        <div role="status" className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-semibold">Provjeri ručno ({warnings.length})</p>
           <ul className="mt-2 space-y-2">
             {warnings.map((w) => (
               <li key={`${w.polje}:${w.poruka}`} className="flex items-start justify-between gap-3">
@@ -130,7 +150,7 @@ export default function Results({ data: extracted, onReset }: { data: Invoice; o
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+      <div className={card}>
         <table className="w-full table-fixed text-sm">
           <caption className="sr-only">Izvučena polja</caption>
           <colgroup>
@@ -138,35 +158,45 @@ export default function Results({ data: extracted, onReset }: { data: Invoice; o
             <col />
             <col style={{ width: "3rem" }} />
           </colgroup>
-          <tbody className="divide-y divide-zinc-100">
-            {FIELDS.map((f) => (
-              <tr key={f.key} className={rowClass(confirmed.has(f.key), warned.has(f.key))}>
-                <th scope="row" className="py-2 pr-1 pl-4 text-left align-top font-normal text-zinc-500">
-                  {f.label}
+          {GROUPS.map((group) => (
+            <tbody key={group} className="divide-y divide-stone-100 [&+tbody]:border-t [&+tbody]:border-stone-200">
+              <tr>
+                <th colSpan={3} scope="colgroup" className="bg-stone-50 px-4 py-2 text-left font-serif font-semibold text-stone-800">
+                  {group}
                 </th>
-                <td className="px-1 py-1 align-top">
-                  <EditableValue
-                    value={data[f.key]}
-                    label={f.label}
-                    numeric={f.kind === "money" || f.kind === "percent"}
-                    format={(v) => fmtField(v, f.kind)}
-                    parse={parserFor(f.kind)}
-                    onCommit={(v) => setField(f.key, v)}
-                  />
-                </td>
-                <td className="py-1.5 pr-3 align-top">
-                  <Tick checked={confirmed.has(f.key)} label={`Potvrdi: ${f.label}`} onClick={() => toggle(f.key)} />
-                </td>
               </tr>
-            ))}
-          </tbody>
+              {FIELDS.filter((f) => f.group === group).map((f) => (
+                <tr key={f.key} className={rowClass(confirmed.has(f.key), warned.has(f.key))}>
+                  <th
+                    scope="row"
+                    className={`py-2 pr-1 pl-4 text-left align-top ${f.key === "ukupno" ? "font-semibold text-stone-800" : "font-normal text-stone-500"}`}
+                  >
+                    {f.label}
+                  </th>
+                  <td className={`px-1 py-1 align-top ${f.key === "ukupno" ? "font-semibold" : ""}`}>
+                    <EditableValue
+                      value={data[f.key]}
+                      label={f.label}
+                      numeric={f.kind === "money" || f.kind === "percent"}
+                      format={(v) => fmtField(v, f.kind)}
+                      parse={parserFor(f.kind)}
+                      onCommit={(v) => setField(f.key, v)}
+                    />
+                  </td>
+                  <td className="py-1.5 pr-3 align-top">
+                    <Tick checked={confirmed.has(f.key)} label={`Potvrdi: ${f.label}`} onClick={() => toggle(f.key)} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          ))}
         </table>
       </div>
 
       {data.pdv_rekapitulacija.length > 0 && (
         <div>
-          <h2 className="mb-2 text-sm font-medium text-zinc-600">PDV po stopama</h2>
-          <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+          <h2 className="mb-2 font-serif font-semibold text-stone-800">PDV po stopama</h2>
+          <div className={card}>
             <table className="w-full table-fixed text-xs sm:text-sm">
               <colgroup>
                 {VAT_COLUMNS.map((c) => (
@@ -174,7 +204,7 @@ export default function Results({ data: extracted, onReset }: { data: Invoice; o
                 ))}
                 <col style={{ width: "2.5rem" }} />
               </colgroup>
-              <thead className="bg-zinc-50 text-right text-xs text-zinc-500">
+              <thead className="bg-stone-50 text-right text-xs text-stone-500">
                 <tr>
                   {VAT_COLUMNS.map((c) => (
                     <th key={c.key} className="px-2 py-2 font-medium">
@@ -186,7 +216,7 @@ export default function Results({ data: extracted, onReset }: { data: Invoice; o
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-100">
+              <tbody className="divide-y divide-stone-100">
                 {data.pdv_rekapitulacija.map((r, i) => {
                   const key = `pdv[${i + 1}]`;
                   return (
@@ -216,13 +246,15 @@ export default function Results({ data: extracted, onReset }: { data: Invoice; o
       )}
 
       <div>
-        <h2 className="mb-2 text-sm font-medium text-zinc-600">Stavke ({data.stavke.length})</h2>
+        <h2 className="mb-2 font-serif font-semibold text-stone-800">
+          Stavke <span className="font-sans text-sm font-normal text-stone-500">({data.stavke.length})</span>
+        </h2>
         {data.stavke.length === 0 ? (
-          <p className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-500">
+          <p className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-500">
             Stavke nisu pročitane.
           </p>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
+          <div className={card}>
             <table className="w-full table-fixed text-xs sm:text-sm">
               <colgroup>
                 <col className="hidden w-9 sm:table-column" />
@@ -232,7 +264,7 @@ export default function Results({ data: extracted, onReset }: { data: Invoice; o
                 <col className="w-[4.25rem] sm:w-24" />
                 <col style={{ width: "2.5rem" }} />
               </colgroup>
-              <thead className="bg-zinc-50 text-left text-[11px] text-zinc-500 sm:text-xs">
+              <thead className="bg-stone-50 text-left text-[11px] text-stone-500 sm:text-xs">
                 <tr>
                   <th className="hidden px-3 py-2 font-medium sm:table-cell">#</th>
                   {ITEM_COLUMNS.map((c) => (
@@ -248,12 +280,12 @@ export default function Results({ data: extracted, onReset }: { data: Invoice; o
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-100">
+              <tbody className="divide-y divide-stone-100">
                 {data.stavke.map((s, i) => {
                   const key = `stavke[${i + 1}]`;
                   return (
                     <tr key={key} className={rowClass(confirmed.has(key), warned.has(key))}>
-                      <td className="hidden px-3 py-2 align-top text-zinc-400 sm:table-cell">{i + 1}</td>
+                      <td className="hidden px-3 py-2 align-top text-stone-400 sm:table-cell">{i + 1}</td>
                       {ITEM_COLUMNS.map((c) => (
                         <td key={c.key} className="px-0.5 py-1 align-top">
                           <EditableValue
@@ -279,23 +311,29 @@ export default function Results({ data: extracted, onReset }: { data: Invoice; o
       </div>
 
       <div
-        className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
-          done === rowKeys.length ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-zinc-200 bg-white text-zinc-700"
+        className={`sticky bottom-3 z-10 rounded-2xl border px-4 py-3 text-sm shadow-lg transition-colors ${
+          allDone ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-stone-200 bg-white text-stone-700"
         }`}
       >
-        <p className="font-medium">
-          {done === rowKeys.length ? "✓ Sve je potvrđeno" : `Potvrđeno ${done} od ${rowKeys.length}`}
-        </p>
-        {remaining.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setConfirmed((prev) => new Set([...prev, ...remaining]))}
-            className={btnSecondary}
-            title="Potvrđuje sve redove bez upozorenja; redove s upozorenjem potvrdi sam"
-          >
-            Potvrdi ostalo
-          </button>
-        )}
+        <div className="flex min-h-9 items-center justify-between gap-3">
+          <p className="font-semibold">{allDone ? "✓ Sve je potvrđeno" : `Potvrđeno ${done} od ${rowKeys.length}`}</p>
+          {remaining.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setConfirmed((prev) => new Set([...prev, ...remaining]))}
+              className={btnSecondary}
+              title="Potvrđuje sve redove bez upozorenja; redove s upozorenjem potvrdi sam"
+            >
+              Potvrdi ostalo
+            </button>
+          )}
+        </div>
+        <div aria-hidden className="mt-2 h-1.5 overflow-hidden rounded-full bg-stone-100">
+          <div
+            className="h-full rounded-full bg-emerald-600 transition-[width] duration-300"
+            style={{ width: `${(done / rowKeys.length) * 100}%` }}
+          />
+        </div>
       </div>
     </div>
   );
